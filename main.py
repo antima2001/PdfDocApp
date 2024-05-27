@@ -1,10 +1,14 @@
 import streamlit as st
-from langchain.schema import HumanMessage, SystemMessage, AIMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from PyPDF2 import PdfReader
 
-# Initialize the Gemini chatbot
-gemini_chat = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.5)
+# Initialize the Gemini chatbot with the necessary parameters
+gemini_chat = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.2)
+
+# Custom exception for handling errors related to Google Generative AI
+class ChatGoogleGenerativeAIError(Exception):
+    """Custom exception for handling errors related to Google Generative AI."""
+    pass
 
 # Streamlit UI
 st.set_page_config(page_title="Chatbot for help")
@@ -12,16 +16,21 @@ st.title("Let's chat with DOC'S")
 
 # Initialize conversation flow messages in the Streamlit session state
 if 'flowmessages' not in st.session_state:
-    st.session_state['flowmessages'] = [
-        SystemMessage(content="You are chatting with an AI assistant")
-    ]
+    st.session_state['flowmessages'] = []
 
 # Function to get response from Gemini chatbot
 def get_gemini_response(user_message):
-    st.session_state['flowmessages'].append(HumanMessage(content=user_message))
-    answer = gemini_chat(st.session_state['flowmessages'])
-    st.session_state['flowmessages'].append(AIMessage(content=answer.content))
-    return answer.content
+    try:
+        # Append user message to conversation history
+        st.session_state['flowmessages'].append(user_message)
+        # Call the chat model with the updated conversation history
+        answer = gemini_chat.predict(st.session_state['flowmessages'])
+        # Append AI response to conversation history
+        st.session_state['flowmessages'].append(answer)
+        # Return AI response
+        return answer
+    except Exception as e:
+        raise ChatGoogleGenerativeAIError(f"Error occurred: {e}")
 
 # Function to extract text from PDF file
 def extract_text_from_pdf(pdf_file):
@@ -38,10 +47,7 @@ def extract_text_from_pdf(pdf_file):
 # Function to display chat history
 def display_chat_history():
     for message in st.session_state['flowmessages']:
-        if isinstance(message, HumanMessage):
-            st.text_area("You:", value=message.content, height=100)
-        elif isinstance(message, AIMessage):
-            st.text_area("Bot:", value=message.content, height=500)
+        st.text_area("Chat History:", value=message, height=200)
 
 # Main function
 def main():
@@ -54,8 +60,11 @@ def main():
         if text:
             user_input = st.text_input("You:")
             if st.button("Send"):
-                response = get_gemini_response(user_input)
-                display_chat_history()
+                try:
+                    response = get_gemini_response(user_input)
+                    display_chat_history()
+                except ChatGoogleGenerativeAIError as e:
+                    st.error(e)
         else:
             st.error("Failed to extract text from PDF file.")
 
